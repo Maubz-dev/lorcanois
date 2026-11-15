@@ -111,12 +111,20 @@ select{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--li
 .fwmsg{position:absolute;left:0;right:0;top:38%;text-align:center;font-size:clamp(2rem,8vw,4.5rem);font-weight:800;color:var(--gold);text-shadow:0 4px 24px rgba(0,0,0,.7);animation:fwpop .9s ease-out both;pointer-events:none}
 .fwhint{position:absolute;left:0;right:0;bottom:24px;text-align:center;color:#f2ecff;opacity:.7;font-size:.9rem;pointer-events:none}
 @keyframes fwpop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+.brand{background:none;border:0;cursor:pointer;display:inline-flex;flex-direction:column;align-items:center;gap:8px;padding:4px 8px;color:var(--text)}
+.brand:hover .brandtxt{opacity:.85}
+.logo{display:inline-flex;flex-wrap:wrap;justify-content:center;gap:4px;width:150px}
+.logo .dot{width:22px;height:22px;margin:0}
+.brandtxt{font-size:clamp(1.6rem,4vw,2.2rem);font-weight:700;color:var(--gold);letter-spacing:.5px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1>Tournoi Lorcana</h1>
+    <button class="brand" onclick="goHome()" aria-label="Retour à l'accueil">
+      <span class="logo" id="logo"></span>
+      <span class="brandtxt">Tournoi Lorcana</span>
+    </button>
     <p class="sub">Poule tous contre tous · Arbre final · Départages · Lore et statistiques</p>
   </header>
   <main id="app"></main>
@@ -151,6 +159,7 @@ let DOC = null, FB_SET = null, lastWritten = null;   // base partagée Firebase
 let APPLYING = false;
 let HIST = {}, HIST_REF = null, FB_PUSH = null, ARCH_CONFIRM = false;
 let RESET_CONFIRM = false, FW_KEY = null;
+let ORG = null, HOME_VIEW = false;
 
 // Téléchargement (Claude uniquement ; sur GitHub, l'export passe par le navigateur)
 if (typeof claude !== 'undefined' && claude && claude.use) {
@@ -181,7 +190,7 @@ Promise.all([
   FB_SET = dbMod.set;
   FB_PUSH = dbMod.push;
   HIST_REF = dbMod.ref(database, 'tournoi/historique');
-  dbMod.onValue(HIST_REF, s => { HIST = s.val() || {}; if(!started) render(); }, e => console.warn('Historique indisponible', e));
+  dbMod.onValue(HIST_REF, s => { HIST = s.val() || {}; if(!started || HOME_VIEW) render(); }, e => console.warn('Historique indisponible', e));
   dbMod.onValue(ref, snap => {
     const raw = snap.val();
     if(typeof raw !== 'string'){ if(started) saveRemote(); return; }   // première utilisation
@@ -195,7 +204,7 @@ Promise.all([
 
 // L'état est enregistré sous forme de texte JSON : évite les soucis des tableaux avec des cases vides
 function snapshotState(){
-  return JSON.parse(JSON.stringify({NP, NAMES, PICK, P, DECKS, POULE, ROUND, S, GL, TBO, FMT, started}));
+  return JSON.parse(JSON.stringify({NP, NAMES, PICK, P, DECKS, POULE, ROUND, S, GL, TBO, FMT, started, ORG}));
 }
 function applyState(d){
   NP = d.NP ?? 4;
@@ -204,6 +213,7 @@ function applyState(d){
   S = d.S || {}; GL = d.GL || {}; TBO = d.TBO || {};
   FMT = d.FMT || {p:1, a:3};
   started = !!d.started;
+  ORG = d.ORG || null;
 }
 function saveRemote(){
   if(!DOC || !FB_SET) return;
@@ -508,18 +518,32 @@ function fmtDate(iso){
   try { return new Date(iso).toLocaleDateString('fr-FR', {day:'numeric', month:'short', year:'numeric'}); }
   catch(e){ return ''; }
 }
+function isOrganizer(){
+  try { return !!ORG && localStorage.getItem('lorcanois-org') === ORG; }
+  catch(e){ return false; }
+}
 function finishedBanner(){
   const ci = championIdx();
-  if(ci == null) return '';
-  return `<div class="panel champ finish">
-    <div class="ctitle">🏆 Tournoi terminé</div>
-    <div class="cname">${dots(ci)}${esc(P[ci])}</div>
-    ${ARCH_CONFIRM
-      ? `<p class="note">Terminer le tournoi ? Les stats seront téléchargées, le tournoi sera archivé et tout le monde reviendra à l'accueil.</p>
+  const org = isOrganizer();
+  let head = '';
+  if(ci != null) head = `<div class="ctitle">🏆 Tournoi terminé</div><div class="cname">${dots(ci)}${esc(P[ci])}</div>`;
+  let orgPart = '';
+  if(org && ci != null){
+    orgPart = ARCH_CONFIRM
+      ? `<p class="note">Terminer le tournoi ? Il sera archivé et tout le monde reviendra à l'accueil.</p>
          <div class="cbtns"><button class="btn" onclick="archiveTournament()">Oui, terminer</button><button class="btn ghost" onclick="ARCH_CONFIRM=false;render()">Annuler</button></div>`
-      : `<div class="cbtns"><button class="btn" onclick="ARCH_CONFIRM=true;render()">Terminer le tournoi et télécharger les stats</button></div>`}
+      : `<div class="cbtns"><button class="btn" onclick="ARCH_CONFIRM=true;render()">Terminer le tournoi</button></div>`;
+  }
+  return `<div class="panel champ finish">
+    ${head}${orgPart}
+    <div class="cbtns" style="margin-top:10px"><button class="btn ghost" onclick="exportCSV()">Télécharger les stats (CSV)</button></div>
   </div>`;
 }
+function resumeHTML(){
+  return `<div class="panel champ"><div class="ctitle">Tournoi en cours</div>
+    <div class="cbtns" style="margin-top:8px"><button class="btn" onclick="HOME_VIEW=false;render()">Reprendre le tournoi</button></div></div>`;
+}
+function goHome(){ HOME_VIEW = true; render(); }
 function archiveTournament(){
   const ci = championIdx();
   if(ci == null) return;
@@ -534,6 +558,7 @@ function archiveTournament(){
   NAMES = Array(NP).fill(''); PICK = Array.from({length: NP}, () => []);
   P = []; DECKS = []; POULE = []; ROUND = []; S = {}; GL = {}; TBO = {};
   ARCH_CONFIRM = false;
+  ORG = null; HOME_VIEW = false;
   render();
   saveRemote();
 }
@@ -684,6 +709,9 @@ function startTournament(){
   POULE = g.pairs; ROUND = g.rounds;
   S = {}; GL = {}; TBO = {};
   started = true;
+  HOME_VIEW = false;
+  ORG = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  try { localStorage.setItem('lorcanois-org', ORG); } catch(e) {}
   render();
 }
 function editNames(){ started = false; OPEN = null; render(); if(DOC && !APPLYING) saveRemote(); }
@@ -775,9 +803,9 @@ function statsHTML(){
 
 function render(){
   const app = document.getElementById('app');
-  if(!started){
+  if(!started || HOME_VIEW){
     fitSetup();
-    app.innerHTML = `
+    app.innerHTML = started ? `${resumeHTML()}${historyHTML()}` : `
       <div class="panel setup">
         <div class="pl">
           <label for="np">Nombre de joueurs</label>
@@ -949,6 +977,7 @@ async function exportCSV(){
   }
 }
 
+document.getElementById('logo').innerHTML = INKS.map(k => `<span class="dot" style="background-image:url(${k.img})"></span>`).join('');
 render();
 </script>
 </body>
