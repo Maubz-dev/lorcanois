@@ -119,6 +119,9 @@ select{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--li
 .logo{display:block;width:64px;height:64px;flex:0 0 64px}
 .logo img{width:100%;height:100%;display:block;border-radius:50%}
 .brandtxt{font-family:'Cinzel',Georgia,'Times New Roman',serif;font-size:clamp(1.5rem,4vw,2.1rem);font-weight:800;color:var(--gold);letter-spacing:.12em;text-transform:uppercase}
+.btn.danger{background:transparent;color:#e0666b;border:1px solid #e0666b}
+.btn.danger:hover{background:rgba(224,102,107,.12);filter:none}
+.resetbar{display:flex;justify-content:flex-end;margin-bottom:10px}
 </style>
 </head>
 <body>
@@ -612,8 +615,8 @@ function removeGameAt(k, idx){
 function resetConfirmHTML(){
   if(!RESET_CONFIRM) return '';
   return `<div class="panel champ" style="border-color:var(--purple)">
-    <p class="note" style="margin:0 0 10px">Abandonner ce tournoi et en commencer un nouveau ? Les résultats non archivés seront perdus.</p>
-    <div class="cbtns"><button class="btn" onclick="newTournament()">Oui, nouveau tournoi</button><button class="btn ghost" onclick="RESET_CONFIRM=false;render()">Annuler</button></div>
+    <p class="note" style="margin:0 0 10px">Réinitialiser le tournoi ? Les résultats non archivés seront perdus.</p>
+    <div class="cbtns"><button class="btn danger" onclick="newTournament()">Oui, réinitialiser</button><button class="btn ghost" onclick="RESET_CONFIRM=false;render()">Annuler</button></div>
   </div>`;
 }
 function newTournament(){
@@ -871,6 +874,8 @@ function render(){
   }
 
   app.innerHTML = `
+    ${isOrganizer() ? `<div class="resetbar"><button class="btn danger" onclick="RESET_CONFIRM=true;render()">Réinitialiser le tournoi</button></div>` : ''}
+    ${resetConfirmHTML()}
     <div class="toolbar">
       <button class="btn ghost" onclick="editNames()">Modifier les joueurs</button>
       <label class="fsel">Poule <select onchange="setFormat('p',+this.value)">${[1,3,5,7].map(n => `<option value="${n}" ${FMT.p===n?'selected':''}>BO${n}</option>`).join('')}</select></label>
