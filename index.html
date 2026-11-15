@@ -111,8 +111,65 @@ let FMT = {p:1, a:3};             // format poule / arbre (BO)
 let started = false, OPEN = null;
 let UNRESOLVED = [], PENDING = [];
 let DL = null;
+let DOC = null, FB_SET = null, lastWritten = null;   // base partagée Firebase
+let APPLYING = false;
+
+// Téléchargement (Claude uniquement ; sur GitHub, l'export passe par le navigateur)
 if (typeof claude !== 'undefined' && claude && claude.use) {
   claude.use('downloads').then(d => { DL = d; render(); }).catch(() => {});
+}
+
+// Configuration Firebase du projet "lorcanois" (clé publique, sans secret)
+const FB_CONFIG = {
+  apiKey: "AIzaSyBnwb70FgQIkG6gPjva6pn2D-sagOJJsUE",
+  authDomain: "lorcanois.firebaseapp.com",
+  databaseURL: "https://lorcanois-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "lorcanois",
+  storageBucket: "lorcanois.firebasestorage.app",
+  messagingSenderId: "226007089769",
+  appId: "1:226007089769:web:11fdd39f9d4dd3506598f8"
+};
+const FB_PATH = 'tournoi/main';
+
+// Chargement des modules Firebase, puis synchronisation en direct
+Promise.all([
+  import('https://www.gstatic.com/firebasejs/13.3.0/firebase-app.js'),
+  import('https://www.gstatic.com/firebasejs/13.3.0/firebase-database.js')
+]).then(([appMod, dbMod]) => {
+  const app = appMod.initializeApp(FB_CONFIG);
+  const database = dbMod.getDatabase(app);
+  const ref = dbMod.ref(database, FB_PATH);
+  DOC = ref;
+  FB_SET = dbMod.set;
+  dbMod.onValue(ref, snap => {
+    const raw = snap.val();
+    if(typeof raw !== 'string'){ if(started) saveRemote(); return; }   // première utilisation
+    if(raw === lastWritten) return;                                    // écho de ma propre écriture
+    lastWritten = raw;
+    APPLYING = true;
+    try { applyState(JSON.parse(raw)); render(); } finally { APPLYING = false; }
+  }, e => console.warn('Synchronisation indisponible', e));
+  render();
+}).catch(e => console.warn('Firebase indisponible', e));
+
+// L'état est enregistré sous forme de texte JSON : évite les soucis des tableaux avec des cases vides
+function snapshotState(){
+  return JSON.parse(JSON.stringify({NP, NAMES, PICK, P, DECKS, POULE, ROUND, S, GL, TBO, FMT, started}));
+}
+function applyState(d){
+  NP = d.NP ?? 4;
+  NAMES = d.NAMES || []; PICK = d.PICK || []; fitSetup();
+  P = d.P || []; DECKS = d.DECKS || []; POULE = d.POULE || []; ROUND = d.ROUND || [];
+  S = d.S || {}; GL = d.GL || {}; TBO = d.TBO || {};
+  FMT = d.FMT || {p:1, a:3};
+  started = !!d.started;
+}
+function saveRemote(){
+  if(!DOC || !FB_SET) return;
+  const raw = JSON.stringify(snapshotState());
+  if(raw === lastWritten) return;
+  lastWritten = raw;
+  FB_SET(DOC, raw).catch(e => console.warn('Écriture échouée', e));
 }
 
 // ---------- utilitaires ----------
@@ -410,7 +467,7 @@ function startTournament(){
   started = true;
   render();
 }
-function editNames(){ started = false; OPEN = null; render(); }
+function editNames(){ started = false; OPEN = null; render(); if(DOC && !APPLYING) saveRemote(); }
 
 // ---------- affichage ----------
 function dots(i){
@@ -569,6 +626,7 @@ function render(){
       <label class="fsel">Arbre <select onchange="setFormat('a',+this.value)">${[1,3,5,7].map(n => `<option value="${n}" ${FMT.a===n?'selected':''}>BO${n}</option>`).join('')}</select></label>
       <button class="btn" onclick="exportCSV()">Exporter (CSV)</button>
       <span id="exp" class="note"></span>
+      <span class="note">${DOC ? '● En direct' : 'Mode local'}</span>
       <button class="btn ghost" onclick="resetAll()">Tout réinitialiser</button>
     </div>
 
@@ -592,6 +650,7 @@ function render(){
     <h2>Statistiques</h2>
     ${statsHTML()}
   `;
+  if(started && DOC && !APPLYING) saveRemote();
 }
 
 // ---------- export CSV ----------
